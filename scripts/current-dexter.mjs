@@ -1,13 +1,33 @@
 // Contract test against the operator-selected, already-built current checkout.
-// Imports only the command parser. No scheduler, project or live mutation is started.
+// Parser actions are replaced; current stores write only disposable test evidence.
+// No operator project, CLI mutation, scheduler loop, agents or inference is started.
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DexterPlugin, MUTATION_COMMANDS } from '../dist/dexter.js';
+import { checkCurrentReaders } from './current-dexter-readers.mjs';
 
 const checkout = await realpath(process.argv[2] ?? '');
+// Refuse stale generated code: this test claims compatibility with source, not an old dist.
+async function verifyBuild(dir = join(checkout, 'engine/src')) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const source = join(dir, entry.name);
+    if (entry.isDirectory()) await verifyBuild(source);
+    else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
+      const map = source
+        .replace(join(checkout, 'engine/src'), join(checkout, 'engine/dist'))
+        .replace(/\.ts$/, '.js.map');
+      const metadata = JSON.parse(await readFile(map, 'utf8'));
+      assert.ok(
+        metadata.sourcesContent?.includes(await readFile(source, 'utf8')),
+        `Dexter build does not match source: ${source}; rebuild the selected checkout`,
+      );
+    }
+  }
+}
+await verifyBuild();
 const parser = pathToFileURL(join(checkout, 'engine/dist/cli-commands.js')).href;
 const root = await mkdtemp(join(tmpdir(), 'deus-current-cli-'));
 try {
@@ -99,6 +119,7 @@ program.parse(process.argv);
   console.log(
     'Current Dexter parser accepted all seven exact argv contracts; no project mutations executed.',
   );
+  await checkCurrentReaders(checkout, root);
 } finally {
   await rm(root, { recursive: true, force: true });
 }

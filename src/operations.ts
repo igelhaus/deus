@@ -57,7 +57,7 @@ export class EventReader {
       limit = p.limit ?? 20;
     if (!Number.isInteger(limit) || limit < 1 || limit > 100)
       throw new Error('limit must be 1..100 events');
-    let before = Number.MAX_SAFE_INTEGER;
+    let before: number | null = null;
     if (p.cursor) {
       const decoded = this.cursor.decode(p.cursor);
       if (
@@ -78,6 +78,12 @@ export class EventReader {
           .get()
       )
         throw new Error('Invalid event sequence');
+      if (before === null)
+        return db
+          .prepare(
+            'SELECT seq, seq_length, document FROM notification_events ORDER BY seq_length DESC, seq DESC LIMIT ?',
+          )
+          .all(limit + 1);
       return db
         .prepare(
           'SELECT seq, seq_length, document FROM notification_events WHERE seq_length < ? OR (seq_length = ? AND seq < ?) ORDER BY seq_length DESC, seq DESC LIMIT ?',

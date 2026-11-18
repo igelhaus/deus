@@ -58,7 +58,7 @@ export class EventReader {
         const root = await realpath(p.workspace), identity = digest(root), limit = p.limit ?? 20;
         if (!Number.isInteger(limit) || limit < 1 || limit > 100)
             throw new Error('limit must be 1..100 events');
-        let before = Number.MAX_SAFE_INTEGER;
+        let before = null;
         if (p.cursor) {
             const decoded = this.cursor.decode(p.cursor);
             if (decoded.identity !== identity ||
@@ -73,6 +73,10 @@ export class EventReader {
                 .prepare("SELECT 1 FROM notification_events WHERE seq_length != length(seq) OR seq = '' OR seq GLOB '*[^0-9]*' OR substr(seq, 1, 1) = '0' LIMIT 1")
                 .get())
                 throw new Error('Invalid event sequence');
+            if (before === null)
+                return db
+                    .prepare('SELECT seq, seq_length, document FROM notification_events ORDER BY seq_length DESC, seq DESC LIMIT ?')
+                    .all(limit + 1);
             return db
                 .prepare('SELECT seq, seq_length, document FROM notification_events WHERE seq_length < ? OR (seq_length = ? AND seq < ?) ORDER BY seq_length DESC, seq DESC LIMIT ?')
                 .all(String(before).length, String(before).length, String(before), limit + 1);

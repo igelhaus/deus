@@ -48,7 +48,7 @@ jobs:
       - run: npm run check
       - run: npm run format:check
       - run: npm run skills:verify
-      - name: Check current Dexter command parser
+      - name: Check current Dexter source, argv and persistence contracts
         if: env.PRIVATE_CLI_AVAILABLE == 'true'
         run: npm run test:current-dexter -- "$GITHUB_WORKSPACE/upstream-dexter"
       - run: npm run test:package

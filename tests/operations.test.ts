@@ -93,6 +93,27 @@ test('SQLite event pages survive appends, redact, omit bodies and reject invalid
   await assert.rejects(reader.read(p), /sequence/);
 });
 
+test('event pagination includes Dexter maximum safe sequence on the first page', async (t) => {
+  const { root } = await fixture(t);
+  await schedulerFixture(root);
+  const max = Number.MAX_SAFE_INTEGER;
+  eventFixture(root, max - 1);
+  eventFixture(root, max);
+  const reader = new EventReader();
+  const first = await reader.read({ workspace: root, limit: 1 });
+  assert.deepEqual(
+    first.events.map((event) => event.seq),
+    [max],
+  );
+  assert.ok(first.nextCursor);
+  const last = await reader.read({ workspace: root, limit: 1, cursor: first.nextCursor });
+  assert.deepEqual(
+    last.events.map((event) => event.seq),
+    [max - 1],
+  );
+  assert.equal(last.nextCursor, null);
+});
+
 test('event wire pages stay bounded and continue without dropping events', async (t) => {
   const { root } = await fixture(t);
   await schedulerFixture(root);

@@ -74,8 +74,11 @@ npm ci --ignore-scripts
 npm run check
 npm run skills:verify
 npm run format:check
+npm run test:current-dexter -- /path/to/built/dexter
 npm run test:package
 ```
+
+The current-checkout test rejects stale builds, checks all seven argv contracts with replaced parser actions, and reads disposable evidence emitted by Dexter's actual stores/serializers through Pi and MCP. It never starts agents or mutates an operator project. Removed APIs remain absent.
 
 Live checks require Dexter on PATH. CI uses read-only `DEXTER_READ_TOKEN` for `arkts-dev/dexter`; forks use `DEUS_TEST_NO_CLI=1`, skipping live signature checks, not fixtures.
 
