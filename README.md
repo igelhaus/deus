@@ -18,6 +18,8 @@ Start Pi in your project; request designer, product-control, research, or `deus_
 
 ### Dexter CLI
 
+Pi and MCP expose the same 17 Dexter tools below. Design and research remain skills using host tools; no design, generic filesystem, workspace-discovery or skill-reading APIs are provided.
+
 `deus_dexter_probe({diagnostics:false})` returns trust evidence; true adds bounded diagnostics. Seven mutations require absolute workspaces and verified executable/argv, without shells or retries:
 
 - `deus_dexter_epic_create({workspace,title,body})`: creates an objective for decomposition.

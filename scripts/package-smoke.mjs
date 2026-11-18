@@ -26,7 +26,6 @@ try {
   const paths = info.files.map((file) => file.path);
   for (const path of [
     'dist/extension.js',
-    'dist/designer.js',
     'dist/board.js',
     'dist/dexter.js',
     'dist/operations.js',
@@ -98,19 +97,13 @@ try {
   const { default: extension } = await import(
     pathToFileURL(join(packageDir, 'dist/extension.js')).href
   );
-  const { default: designer } = await import(
-    pathToFileURL(join(packageDir, 'dist/designer.js')).href
-  );
   const { default: board } = await import(pathToFileURL(join(packageDir, 'dist/board.js')).href);
   const tools = [];
   const hooks = [];
   const register = { registerTool: (tool) => tools.push(tool), on: (name) => hooks.push(name) };
   extension(register);
-  designer(register);
   board(register);
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
-    'deus_design_check',
-    'deus_design_write',
     'deus_dexter_architecture_accept',
     'deus_dexter_bots_live',
     'deus_dexter_epic_create',
@@ -169,40 +162,6 @@ try {
     return JSON.parse(response.content[0].text);
   };
   try {
-    const design = await invoke('deus_design_check', {
-      path: '.deus/design/performance.md',
-      content: `---
-kind: design
-id: performance
-created_at: 2026-01-01T00:00:00Z
-updated_at: 2026-01-01T00:00:00Z
-status: draft
-references:
-  - tools/gate-manifest.sh
-problem: Reduce latency by 25% without reducing coverage.
-options:
-  - Reuse compiled artifacts.
-decision: Cache builds, not test verdicts.
-acceptance:
-  - Exit codes and behavioral assertions remain unchanged.
----
-## Objective
-Reduce test latency.
-## Invariants
-Every requested scenario executes.
-## Boundaries
-Compiler semantics remain unchanged.
-## Decisions
-Reuse immutable build products.
-## Acceptance
-Cold and warm execution times improve.
-## References
-tools/gate-manifest.sh
-`,
-    });
-    assert.equal(design.ok, true);
-    assert.deepEqual(design.errors, []);
-    assert.deepEqual(design.warnings, []);
     const shippedDesigner = await readFile(join(packageDir, 'skills/designer/SKILL.md'), 'utf8');
     assert.ok(shippedDesigner.includes('user confirmation before writing'));
     assert.ok(shippedDesigner.includes('designer does not implement or prototype'));
@@ -341,26 +300,13 @@ tools/gate-manifest.sh
     await mcp.connect(transport);
     assert.deepEqual(
       (await mcp.listTools()).tools.map((tool) => tool.name).sort(),
-      [
-        ...tools.map((tool) => tool.name),
-        'deus_workspace_info',
-        'deus_skill_read',
-        'deus_artifact_list',
-        'deus_artifact_read',
-        'deus_artifact_write',
-      ].sort(),
+      tools.map((tool) => tool.name).sort(),
     );
     const call = async (name, args = {}) => {
       const result = await mcp.callTool({ name, arguments: args });
       assert.ok(!result.isError, JSON.stringify(result));
       return JSON.parse(result.content[0].text);
     };
-    assert.equal((await call('deus_workspace_info')).workspace, root);
-    const skill = await mcp.callTool({ name: 'deus_skill_read', arguments: { name: 'designer' } });
-    assert.equal(
-      skill.content[0].text,
-      await readFile(join(packageDir, 'skills/designer/SKILL.md'), 'utf8'),
-    );
     assert.equal(
       (await call('deus_dexter_issue_nudge', { workspace: root, issue: 'ISSUE-0001' })).status,
       'rejected',
@@ -394,7 +340,7 @@ tools/gate-manifest.sh
         files: paths.length,
         tools: tools.map((tool) => tool.name),
         exercised: [
-          'designer product constraints accepted and confirmation guidance shipped',
+          'original skills and host-filesystem design guidance shipped',
           'DEXTER_BIN precedence',
           process.env.DEUS_TEST_NO_CLI === '1'
             ? 'default dexter name resolves the PATH fixture'
@@ -402,7 +348,7 @@ tools/gate-manifest.sh
           'unknown-profile typed mutations including subtree rejection blocked',
           'bounded reader continuation without CLI execution',
           'current SQLite ownership and event continuation without CLI execution',
-          'installed MCP executable, current tool discovery, workspace binding, skills and typed trust refusal',
+          'installed MCP executable, Dexter-only tool discovery, workspace binding and typed trust refusal',
         ],
       },
       null,

@@ -47,8 +47,8 @@ test('minimal prompt and lazy skills describe tracked artifact contracts', async
   for (const pattern of [
     /never amend/i,
     /never write inside `fs\/` or `forge\/`/i,
-    /deus_design_check/,
-    /deus_design_write/,
+    /Review structure and consistency yourself/,
+    /host's filesystem tools/,
     /Reuse settled answers/,
     /Ask only consequential unresolved questions/,
     /after their prerequisites are settled/,
@@ -57,7 +57,6 @@ test('minimal prompt and lazy skills describe tracked artifact contracts', async
     /user confirmation before writing/,
     /destination approval alone is insufficient/,
     /Allow quantitative requirements/,
-    /review every warning/,
     /stop questioning[\s\S]*experiment[\s\S]*Resume from observations/,
   ])
     assert.match(designer, pattern);

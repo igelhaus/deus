@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
-import { mkdir, readFile, writeFile, symlink } from 'node:fs/promises';
+import { mkdir, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -8,12 +8,10 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createDeusServer } from '../src/mcp.js';
 import { DexterPlugin } from '../src/dexter.js';
 import { registerDexterTools } from '../src/extension.js';
-import { registerDesignerTools } from '../src/designer.js';
 import { registerBoardTools } from '../src/board.js';
 import type { ToolRegistrar } from '../src/tool-registry.js';
 import {
   fixture,
-  secret,
   environment,
   trust,
   program,
@@ -43,52 +41,26 @@ async function setup(t: TestContext) {
     assert.equal((await client.callTool({ name, arguments: args })).isError, true);
   return { root, app, client, call, reject, put };
 }
-const design = `---
-kind: design
-id: mcp
-created_at: 2026-10-07
-updated_at: 2026-10-07
-status: confirmed
-references: [README.md]
-problem: Remote access is missing.
-options: [MCP]
-decision: Use MCP.
-acceptance: [Codex can read tasks.]
----
-# Remote access
-`;
 
-test('MCP exposes current typed tools and original skills with accurate annotations and workspace binding', async (t) => {
+test('MCP exposes exactly the shared Dexter tools with accurate annotations and workspace binding', async (t) => {
   const { root, client, call, reject } = await setup(t);
   const tools = (await client.listTools()).tools;
-  const names = tools.map((tool) => tool.name);
   const shared: string[] = [];
   const registry: ToolRegistrar = {
     registerTool: (tool) => {
       shared.push(tool.name);
     },
   };
-  for (const register of [registerDexterTools, registerDesignerTools, registerBoardTools])
-    register(registry);
-  assert.deepEqual(
-    names.sort(),
-    [
-      ...shared,
-      'deus_workspace_info',
-      'deus_skill_read',
-      'deus_artifact_list',
-      'deus_artifact_read',
-      'deus_artifact_write',
-    ].sort(),
-  );
+  for (const register of [registerDexterTools, registerBoardTools]) register(registry);
+  assert.equal(shared.length, 17);
+  assert.deepEqual(tools.map((tool) => tool.name).sort(), shared.sort());
+  assert.ok(tools.every((tool) => tool.name.startsWith('deus_dexter_')));
   for (const tool of tools)
     assert.deepEqual(
       [...(tool.inputSchema.required ?? [])].sort(),
       Object.keys(tool.inputSchema.properties ?? {}).sort(),
       tool.name,
     );
-  await reject('deus_artifact_read', { path: 'README.md' });
-  await reject('deus_artifact_list', { path: '.' });
   for (const suffix of [
     'probe',
     'issues_live',
@@ -132,16 +104,6 @@ test('MCP exposes current typed tools and original skills with accurate annotati
   assert.ok(!JSON.stringify(metrics).includes(root));
   assert.ok(!JSON.stringify(metrics).includes('forge/'));
   await reject('deus_dexter_metrics', { ...metricsArgs, workspace: '/client/not-server' });
-  const info = await call('deus_workspace_info');
-  assert.equal(info.workspace, root);
-  assert.equal(info.skills.length, 6);
-  for (const name of info.skills) {
-    const result = await client.callTool({ name: 'deus_skill_read', arguments: { name } });
-    assert.equal(
-      (result.content as { text: string }[])[0]!.text,
-      await readFile(new URL(`../skills/${name}/SKILL.md`, import.meta.url), 'utf8'),
-    );
-  }
   for (const args of [
     { workspace: '/elsewhere', issue: 'ISSUE-0001' },
     { workspace: root, issue: '../escape' },
@@ -190,59 +152,23 @@ test('MCP preserves trust refusal and current scheduler pagination', async (t) =
   assert.deepEqual((await call('deus_dexter_bots_live', { workspace: root })).runs, []);
 });
 
-test('MCP writes designs once, reads artifacts, and rejects path escapes including board tools', async (t) => {
-  const { root, client, call, reject } = await setup(t);
+test('MCP board rejects linked directories and entries', async (t) => {
+  const { root, reject } = await setup(t);
   const outside = await fixture(t);
-  await symlink(outside.root, join(root, 'escape'));
-  assert.equal(
-    (await call('deus_design_check', { path: '.deus/design/mcp.md', content: design })).ok,
-    true,
-  );
-  const responses = await Promise.all(
-    [1, 2].map(() =>
-      client.callTool({
-        name: 'deus_design_write',
-        arguments: { path: '.deus/design/mcp.md', content: design },
-      }),
-    ),
-  );
-  assert.equal(responses.filter((r) => r.isError).length, 1);
-  assert.equal(
-    (await call('deus_artifact_read', { path: '.deus/design/mcp.md', offset: 0, maxBytes: 4096 }))
-      .text,
-    design,
-  );
-  assert.equal(
-    (await call('deus_artifact_list', { path: '.deus/design', offset: 0 })).entries[0].name,
-    'mcp.md',
-  );
-  for (const path of [
-    '../outside',
-    '/etc/passwd',
-    'escape/x',
-    'forge/issues/x',
-    'bus/x',
-    'fs/../forge/x',
-    '.git/config',
-    '.env',
-    'dexter.config.json',
-    'scheduler.sqlite3',
-    'scheduler.sqlite3-journal',
-  ])
-    await reject('deus_artifact_read', { path, offset: 0, maxBytes: 4096 });
-  for (const path of ['escape/x.md', 'bus/design.md', '.git/design.md', '.env']) {
-    await reject('deus_design_write', { path, content: design });
-    await reject('deus_design_write', { path: ` ${path} `, content: design });
-  }
-  await assert.rejects(readFile(join(outside.root, 'x.md')), { code: 'ENOENT' });
-  assert.equal(
-    (await call('deus_design_check', { path: ' .deus/design/trimmed.md ', content: design })).path,
-    '.deus/design/trimmed.md',
-  );
   await mkdir(join(root, 'forge'));
   await symlink(outside.root, join(root, 'forge/issues'));
-  for (const name of ['deus_dexter_issues_live', 'deus_dexter_issues_plan'])
-    await reject(name, { workspace: root, cursor: null, limit: 20 });
+  const check = async () => {
+    for (const name of ['deus_dexter_issues_live', 'deus_dexter_issues_plan'])
+      await reject(name, { workspace: root, cursor: null, limit: 20 });
+  };
+  await check();
+  await rm(join(root, 'forge/issues'));
+  await mkdir(join(root, 'forge/issues'));
+  await symlink(join(outside.root, 'missing.md'), join(root, 'forge/issues/ISSUE-0001.md'));
+  await check();
+  await rm(join(root, 'forge/issues/ISSUE-0001.md'));
+  await symlink(outside.root, join(root, 'forge/.candidates'));
+  await check();
 });
 
 test('MCP preserves board planning and snapshot pagination', async (t) => {
@@ -283,25 +209,6 @@ test('MCP preserves board planning and snapshot pagination', async (t) => {
   );
 });
 
-test('MCP persists reports without overwriting or touching source', async (t) => {
-  const { call, reject } = await setup(t);
-  const content =
-    '---\nkind: research\nid: sample\ncreated_at: 2026-10-07\nupdated_at: 2026-10-07\nstatus: draft\nreferences: []\nquestion: What changed?\nmode: local\nprovider: filesystem\nsources: []\ngaps: []\n---\nEvidence is incomplete.\n';
-  const path = '.deus/research/sample.md';
-  assert.equal((await call('deus_artifact_write', { path, content })).status, 'written');
-  assert.equal(
-    (await call('deus_artifact_read', { path, offset: 0, maxBytes: 4096 })).text,
-    content,
-  );
-  for (const path of [
-    '.deus/research/sample.md',
-    'fs/code.ts',
-    '.deus/design/x.md',
-    '.deus/handoffs/x.md',
-  ])
-    await reject('deus_artifact_write', { path, content });
-});
-
 for (const disconnect of [false, true])
   test(`MCP ${disconnect ? 'disconnect' : 'cancellation'} reaps a fixture process without replaying its typed mutation`, async (t) => {
     const { root, client, call } = await setup(t);
@@ -315,10 +222,7 @@ for (const disconnect of [false, true])
     trust(t);
     const controller = new AbortController();
     const running = client.callTool(
-      {
-        name: 'deus_dexter_issue_reject',
-        arguments: { issue: 'ISSUE-0001', workspace: root },
-      },
+      { name: 'deus_dexter_issue_reject', arguments: { issue: 'ISSUE-0001', workspace: root } },
       undefined,
       { signal: controller.signal },
     );
@@ -327,80 +231,22 @@ for (const disconnect of [false, true])
     if (disconnect) await client.close();
     else controller.abort();
     await rejected;
-    if (!disconnect) await call('deus_workspace_info');
+    if (!disconnect)
+      await call('deus_dexter_events_read', { workspace: root, cursor: null, limit: 1 });
     const lines = (await waitFile(marker, 'stopped')).trim().split('\n');
     assert.equal(lines.length, 2);
     assert.deepEqual(JSON.parse(lines[0]!), ['reject-issue', `--dir=${root}`, 'ISSUE-0001']);
     assert.equal(lines[1], 'stopped');
   });
 
-test('remote artifact pagination preserves UTF-8 and redacts before slicing across byte boundaries', async (t) => {
-  const { root, call, client } = await setup(t);
-  secret(t, 'private-artifact-token');
-  const text = '字Привет🙂private-artifact-token end';
-  const expected = text.replace('private-artifact-token', '[REDACTED]');
-  await writeFile(join(root, 'unicode.txt'), text);
-  await writeFile(join(root, 'invalid.txt'), Buffer.from([0x61, 0xff, 0x62]));
-  const invalid = await client.callTool({
-    name: 'deus_artifact_read',
-    arguments: { path: 'invalid.txt', offset: 0, maxBytes: 12 },
-  });
-  assert.equal(invalid.isError, true);
-  assert.match((invalid.content as { text: string }[])[0]!.text, /not valid UTF-8/);
-  let offset: number | null = 0,
-    collected = '',
-    revision = '';
-  while (offset !== null) {
-    const part = await call('deus_artifact_read', { path: 'unicode.txt', offset, maxBytes: 4 });
-    revision ||= part.sha256;
-    assert.equal(part.sha256, revision);
-    assert.ok(!part.text.includes('private-artifact-token'));
-    collected += part.text;
-    assert.ok(part.nextOffset === null || part.nextOffset > offset);
-    offset = part.nextOffset;
-  }
-  assert.equal(collected, expected);
-  for (const args of [
-    { offset: 1, maxBytes: 4 },
-    { offset: 0, maxBytes: 1 },
-  ])
-    assert.equal(
-      (
-        await client.callTool({
-          name: 'deus_artifact_read',
-          arguments: { path: 'unicode.txt', ...args },
-        })
-      ).isError,
-      true,
-    );
-});
-
-test('wire readers redact once before pagination, retaining byte limits, offsets and digest', async (t) => {
+test('MCP Forge readers redact once before UTF-8 pagination and retain the revision', async (t) => {
   const { root, call, put } = await setup(t);
-  const raw = 'password=abcdefgh';
-  const expected = 'password=[REDACTED]';
+  const raw = '字🙂 password=abcdefgh';
+  const expected = '字🙂 password=[REDACTED]';
   const sha256 = createHash('sha256').update(expected).digest('hex');
-  await put('sample.txt', raw);
-  let offset: number | null = 0,
-    collected = '';
-  do {
-    const page = await call('deus_artifact_read', { path: 'sample.txt', offset, maxBytes: 12 });
-    const bytes = Buffer.byteLength(page.text);
-    assert.ok(bytes <= 12);
-    assert.equal(page.offset, offset);
-    assert.equal(page.size, Buffer.byteLength(expected));
-    assert.equal(page.sha256, sha256);
-    assert.equal(page.digestScope, 'complete-redacted-content');
-    if (page.nextOffset !== null) assert.equal(page.nextOffset, offset + bytes);
-    collected += page.text;
-    offset = page.nextOffset;
-  } while (offset !== null);
-  assert.equal(collected, expected);
-  assert.equal(createHash('sha256').update(collected).digest('hex'), sha256);
-
   await put('forge/wiki/sample.md', '---\nslug: sample\n---\n' + raw);
-  let cursor: string | null = null;
-  collected = '';
+  let cursor: string | null = null,
+    collected = '';
   do {
     const page = await call('deus_dexter_wiki_read', {
       workspace: root,

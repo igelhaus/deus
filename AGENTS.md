@@ -31,7 +31,7 @@ Read-only operations are allowed as usual, including Forge records, transcripts,
 
 `deus_dexter_issues_live`/`deus_dexter_issues_plan` read Forge; planning never mutates. `deus_dexter_issue_reject` rejects the target and unfinished descendants: inspect the subtree and require explicit user authorization. Rejection does not satisfy dependencies. Never edit Forge. Read working leases/notifications from scheduler.sqlite3; reservations/throttling are unobservable. Initialization, drain, directives, request answers/denials, config, and dexter-web are unexposed.
 
-MCP: absolute existing workspace; schema/path validation, serialization, cancellation/disconnect; never replay. See `docs/mcp.md`.
+Pi and MCP expose the same 17 Dexter tools only; no design or generic filesystem APIs. Skills use host tools. MCP: absolute existing workspace; schema/path validation, serialization, cancellation/disconnect; never replay. See `docs/mcp.md`.
 
 Web research uses the host agent's public web tools, not a Deus API or nested model session. Never send private project text to public sources; separate evidence, inference, and gaps. Local research uses host filesystem access. Unless explicitly requested elsewhere, skills write only tracked Markdown under `.deus/design/`, `.deus/research/`, and `.deus/handoffs/`, with required YAML and no credentials, absolute paths, live logs, or private state.
 

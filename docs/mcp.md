@@ -29,15 +29,11 @@ args = ["-T", "-o", "BatchMode=yes", "dexter-host", "/opt/deus-mcp/start"]
 
 The operator-owned launcher configures server-side PATH, Dexter/signing trust, then `exec`s the command above. Verify SSH host keys. Stdio only; no workspace initialization or drain.
 
-## MCP additions
+## Tools and boundaries
 
-- `deus_workspace_info`: canonical workspace and skills.
-- `deus_skill_read({name})`: integrity-checked original workflow.
-- `deus_artifact_list({path,offset})`: 200 entries/page; initially offset 0.
-- `deus_artifact_read({path,offset,maxBytes})`: UTF-8, ≤64 MiB/file; normally offset 0/maxBytes 4096; max 256,000. Redacted offsets/digest.
-- `deus_artifact_write({path,content})`: create-only Markdown research/handoffs under `.deus/`; required front matter. Designs use design tools.
+MCP exposes exactly the same 17 Dexter tools as Pi: seven mutations and ten inspection tools. No workspace discovery, skill-reading, generic filesystem or design APIs. The initialization instructions identify the canonical server workspace; workspace arguments must match it exactly. Extra properties are rejected; dedicated readers retain their path guards.
 
-Workspace arguments must match the canonical server root; paths are server-relative. Extra properties, traversal, links and special files are rejected. Generic artifacts exclude Forge, bus, scheduler SQLite files, Git, node_modules, `.env*` and Dexter configuration; dedicated readers retain their guards.
+Install skills on the client separately. Use the host agent's filesystem tools for source inspection, design documents, reports and handoffs. Remote clients need a separate authorized filesystem channel for those operations; Deus does not supply one.
 
 Calls serialize per connection. Cancellation/disconnect abort foreground processes; interrupted mutations may have happened—inspect, never replay. No durable jobs or cross-process locking; cursors expire with the server. Trusted workspace owner/OS account required, not a hostile-filesystem sandbox.
 

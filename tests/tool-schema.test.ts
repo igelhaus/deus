@@ -4,7 +4,6 @@ import type { TSchema } from 'typebox';
 import { Value } from 'typebox/value';
 import extension from '../src/extension.js';
 import board from '../src/board.js';
-import designer from '../src/designer.js';
 import { DexterPlugin } from '../src/dexter.js';
 import { fixture, schedulerFixture } from './fixture.js';
 
@@ -16,7 +15,7 @@ type Tool = {
 function tools() {
   const registered = new Map<string, Tool>();
   const pi = { on() {}, registerTool: (tool: Tool) => registered.set(tool.name, tool) };
-  for (const register of [extension, board, designer]) register(pi as never);
+  for (const register of [extension, board]) register(pi as never);
   return registered;
 }
 async function call(tool: Tool, parameters: unknown, cwd: string) {
